@@ -1,8 +1,8 @@
-use std::io::{self, Write};
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct InitMsgPayload {
+pub struct Init {
     _type: String,
     node_id: String,
     node_ids: Vec<String>,
@@ -10,20 +10,9 @@ pub struct InitMsgPayload {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct InitOkPayload {
+pub struct InitOk {
     _type: String,
 }
-
-pub fn handle_init(msg: &String) -> String {
-    let echo_msg: Message<InitMsgPayload> = serde_json::from_str(msg).unwrap();
-
-    let payload = echo_msg.get_payload();
-
-    let echo_reply: Message<InitOkPayload> = echo_msg.switch_src_dest(payload);
-
-    serde_json::to_string(&echo_reply).unwrap()
-}
-
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Body<T> {
@@ -40,24 +29,6 @@ pub struct Message<T> {
     body: Body<T>,
 }
 
-// impl<T: Clone> Message<T> {
-//     pub fn switch_src_dest(&self, payload: T) -> Message<T> {
-//         Message::<T> {
-//             src: self.dest.to_owned(),
-//             dest: self.src.to_owned(),
-//             body: Body::<T> {
-//                 msg_id: self.body.msg_id,
-//                 in_reply_to: self.body.msg_id,
-//                 payload,
-//             },
-//         }
-//     }
-
-//     pub fn get_payload(&self) -> T {
-//         self.body.payload.clone()
-//     }
-// }
-
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Echo {
     #[serde(rename = "type")]
@@ -65,31 +36,52 @@ pub struct Echo {
     echo: String,
 }
 
-pub fn handle_echo(msg: &String) -> String {
-    let echo_msg: Message<Echo> = serde_json::from_str(msg).unwrap();
-
-    let payload = echo_msg.get_payload();
-
-    let echo_reply: Message<Echo> = echo_msg.switch_src_dest(payload);
-
-    serde_json::to_string(&echo_reply).unwrap()
-}
-
-
 fn main() -> io::Result<()> {
-    for line in io::stdin().lines() {}
-    let mut buffer = String::new();
     let stdin = io::stdin();
-
+    let mut buffer = String::new();
     stdin.read_line(&mut buffer)?;
 
-    println!("Got {}", buffer);
+    let initmsg: Message<Init> = serde_json::from_str(&buffer).unwrap();
+    initmsg.body.payload._type;
 
     let mut stdout = io::stdout().lock();
 
-    println!("Sending {}", serde_json::to_string(&echo_reply)?);
+    let initok = Message::<InitOk> {
+        src: initmsg.dest,
+        dest: initmsg.src,
+        body: Body::<InitOk> {
+            payload: InitOk {
+                _type: "init_ok".to_string(),
+            },
+            in_reply_to: initmsg.body.msg_id,
+            msg_id: None,
+        },
+    };
 
-    stdout.write_all(serde_json::to_string(&echo_reply)?.as_bytes())?;
+    stdout
+        .write_all(serde_json::to_string(&initok)?.as_bytes())
+        .unwrap();
+
+    for line in io::stdin().lines() {
+        let echomsg: Message<Echo> = serde_json::from_str(&line.unwrap()).unwrap();
+
+        let reply = Message::<Echo> {
+            src: echomsg.dest,
+            dest: echomsg.src,
+            body: Body::<Echo> {
+                in_reply_to: Some(echomsg.body.msg_id.unwrap()),
+                msg_id: echomsg.body.msg_id,
+                payload: Echo {
+                    _type: "echo_ok".to_string(),
+                    echo: echomsg.body.payload.echo,
+                },
+            },
+        };
+        stdout
+            .write_all(serde_json::to_string(&reply)?.as_bytes())
+            .unwrap();
+    }
+    Ok(())
 }
 
 #[cfg(test)]
