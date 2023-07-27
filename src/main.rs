@@ -1,16 +1,156 @@
 use std::io::{self, Write};
+use serde::{Deserialize, Serialize};
 
-mod message;
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct InitMsgPayload {
+    _type: String,
+    node_id: String,
+    node_ids: Vec<String>,
+    msg_id: u32,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct InitOkPayload {
+    _type: String,
+}
+
+pub fn handle_init(msg: &String) -> String {
+    let echo_msg: Message<InitMsgPayload> = serde_json::from_str(msg).unwrap();
+
+    let payload = echo_msg.get_payload();
+
+    let echo_reply: Message<InitOkPayload> = echo_msg.switch_src_dest(payload);
+
+    serde_json::to_string(&echo_reply).unwrap()
+}
+
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct Body<T> {
+    msg_id: Option<u32>,
+    in_reply_to: Option<u32>,
+    #[serde(flatten)]
+    payload: T,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct Message<T> {
+    src: String,
+    dest: String,
+    body: Body<T>,
+}
+
+// impl<T: Clone> Message<T> {
+//     pub fn switch_src_dest(&self, payload: T) -> Message<T> {
+//         Message::<T> {
+//             src: self.dest.to_owned(),
+//             dest: self.src.to_owned(),
+//             body: Body::<T> {
+//                 msg_id: self.body.msg_id,
+//                 in_reply_to: self.body.msg_id,
+//                 payload,
+//             },
+//         }
+//     }
+
+//     pub fn get_payload(&self) -> T {
+//         self.body.payload.clone()
+//     }
+// }
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct Echo {
+    #[serde(rename = "type")]
+    _type: String,
+    echo: String,
+}
+
+pub fn handle_echo(msg: &String) -> String {
+    let echo_msg: Message<Echo> = serde_json::from_str(msg).unwrap();
+
+    let payload = echo_msg.get_payload();
+
+    let echo_reply: Message<Echo> = echo_msg.switch_src_dest(payload);
+
+    serde_json::to_string(&echo_reply).unwrap()
+}
+
 
 fn main() -> io::Result<()> {
+    for line in io::stdin().lines() {}
     let mut buffer = String::new();
     let stdin = io::stdin();
 
     stdin.read_line(&mut buffer)?;
 
+    println!("Got {}", buffer);
+
     let mut stdout = io::stdout().lock();
 
-    stdout.write_all(buffer.as_bytes())?;
+    println!("Sending {}", serde_json::to_string(&echo_reply)?);
 
-    Ok(())
+    stdout.write_all(serde_json::to_string(&echo_reply)?.as_bytes())?;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serialization_works() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Payload {
+            key: u32,
+            #[serde(rename = "type")]
+            _type: String,
+        }
+
+        let message = r#"{"src": "test1", "dest": "test2", "body": {"type": "read", "msg_id": 123, "key": 3}}"#;
+
+        let message_expect = Message::<Payload> {
+            src: "test1".to_string(),
+            dest: "test2".to_string(),
+            body: Body::<Payload> {
+                msg_id: Some(123),
+                in_reply_to: None,
+                payload: Payload {
+                    key: 3,
+                    _type: "read".to_string(),
+                },
+            },
+        };
+
+        let res: Message<Payload> = serde_json::from_str(message).unwrap();
+
+        assert_eq!(res, message_expect);
+    }
+
+    #[test]
+    fn deserialization_works() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Payload {
+            key: u32,
+            #[serde(rename = "type")]
+            _type: String,
+        }
+
+        let message = Message::<Payload> {
+            src: "test1".to_string(),
+            dest: "test2".to_string(),
+            body: Body::<Payload> {
+                msg_id: Some(123),
+                in_reply_to: None,
+                payload: Payload {
+                    key: 3,
+                    _type: "read".to_string(),
+                },
+            },
+        };
+
+        let res: String = serde_json::to_string(&message).unwrap();
+
+        let message_result: Message<Payload> = serde_json::from_str(&res).unwrap();
+
+        assert_eq!(message_result, message);
+    }
 }
