@@ -3,14 +3,15 @@ use std::io::{self, Write};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Init {
+    #[serde(rename = "type")]
     _type: String,
     node_id: String,
     node_ids: Vec<String>,
-    msg_id: u32,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct InitOk {
+    #[serde(rename = "type")]
     _type: String,
 }
 
@@ -42,7 +43,6 @@ fn main() -> io::Result<()> {
     stdin.read_line(&mut buffer)?;
 
     let initmsg: Message<Init> = serde_json::from_str(&buffer).unwrap();
-    initmsg.body.payload._type;
 
     let mut stdout = io::stdout().lock();
 
@@ -58,9 +58,10 @@ fn main() -> io::Result<()> {
         },
     };
 
-    stdout
-        .write_all(serde_json::to_string(&initok)?.as_bytes())
-        .unwrap();
+    let mut initok_reply = serde_json::to_string(&initok)?;
+    initok_reply.push('\n');
+
+    stdout.write_all(initok_reply.as_bytes()).unwrap();
 
     for line in io::stdin().lines() {
         let echomsg: Message<Echo> = serde_json::from_str(&line.unwrap()).unwrap();
@@ -77,9 +78,11 @@ fn main() -> io::Result<()> {
                 },
             },
         };
-        stdout
-            .write_all(serde_json::to_string(&reply)?.as_bytes())
-            .unwrap();
+
+        let mut echo_reply = serde_json::to_string(&reply)?;
+        echo_reply.push('\n');
+
+        stdout.write_all(echo_reply.as_bytes()).unwrap();
     }
     Ok(())
 }
